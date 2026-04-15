@@ -1,5 +1,3 @@
-import semver from "semver";
-
 import {
   AGENT_SEQUENCE,
   DEFAULT_NIM_MODEL,
