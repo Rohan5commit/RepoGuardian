@@ -43,7 +43,7 @@ const effortWeight = { fast: 2, moderate: 4, deep: 7 } as const;
 const confidenceWeight = { high: 10, medium: 6, low: 3 } as const;
 
 const dependencyCache = new Map<string, string | null>();
-const MAX_NIM_REMEDIATIONS = 4;
+const MAX_NIM_REMEDIATIONS = 1;
 
 function now() {
   return Date.now();
@@ -598,9 +598,10 @@ async function callNim(messages: Array<{ role: "system" | "user"; content: strin
     body: JSON.stringify({
       model: process.env.NVIDIA_NIM_MODEL || DEFAULT_NIM_MODEL,
       temperature: 0.1,
-      max_tokens: 700,
+      max_tokens: 450,
       messages,
     }),
+    signal: AbortSignal.timeout(12000),
   });
 
   if (!response.ok) {
