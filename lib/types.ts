@@ -46,6 +46,7 @@ export interface RepositorySnapshot {
   target: RepositoryTarget;
   tree: RepositoryTreeEntry[];
   files: RepositoryFile[];
+  warnings?: string[];
   scannedAt: string;
 }
 

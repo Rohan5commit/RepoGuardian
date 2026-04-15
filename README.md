@@ -20,7 +20,7 @@ This project is designed for the Tech Builders Program judging criteria:
 - Public GitHub repository intake with URL parsing and high-signal file selection
 - Built-in vulnerable demo repository for a stable judging path
 - Secret exposure detection for committed `.env` files, hardcoded credentials, and key material
-- Dependency drift analysis for `package.json` and `requirements.txt`
+- Advisory-backed dependency risk analysis for pinned runtime dependencies in `package.json` and `requirements.txt`
 - Configuration and auth review for permissive CORS, missing security headers, weak JWT usage, localStorage tokens, debug flags, and admin routes
 - NVIDIA NIM-ready remediation engine with structured JSON output
 - Prioritized top actions list and weighted security score

@@ -54,7 +54,7 @@ The first version focuses on high-signal checks:
 - weak JWT usage
 - permissive CORS
 - missing security headers
-- dependency drift
+- known vulnerable pinned dependencies
 - debug artifacts
 - suspicious admin or internal routes
 

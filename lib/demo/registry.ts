@@ -67,7 +67,7 @@ export async function loadDemoSnapshot(id: string): Promise<RepositorySnapshot> 
       sourceMode: "demo",
       name: demo.name,
       fullName: `demo/${demo.id}`,
-      ref: "local",
+      ref: "built-in",
       url: demo.githubUrl,
       description: demo.description,
       primaryLanguage: "TypeScript",
@@ -79,6 +79,7 @@ export async function loadDemoSnapshot(id: string): Promise<RepositorySnapshot> 
       size: file.size,
     })),
     files,
+    warnings: [],
     scannedAt: new Date().toISOString(),
   };
 }

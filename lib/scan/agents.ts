@@ -3,13 +3,13 @@ import semver from "semver";
 import {
   AGENT_SEQUENCE,
   DEFAULT_NIM_MODEL,
-  DEMO_REPOSITORY_ID,
   NVIDIA_NIM_BASE_URL,
+  OSV_API_BASE,
   SECURITY_HEADER_PATTERNS,
   SEVERITY_WEIGHTS,
   WATCHLIST_PACKAGES,
 } from "@/lib/constants";
-import { loadDemoSnapshot } from "@/lib/demo/registry";
+import { demoRepositories, loadDemoSnapshot } from "@/lib/demo/registry";
 import { buildReportMarkdown } from "@/lib/report";
 import { fetchGitHubSnapshot, parseGitHubRepositoryUrl } from "@/lib/scan/github";
 import {
@@ -42,8 +42,18 @@ const exploitabilityWeight = { high: 14, medium: 8, low: 4 } as const;
 const effortWeight = { fast: 2, moderate: 4, deep: 7 } as const;
 const confidenceWeight = { high: 10, medium: 6, low: 3 } as const;
 
-const dependencyCache = new Map<string, string | null>();
+const dependencyLatestVersionCache = new Map<string, string | null>();
+const dependencyAdvisoryCache = new Map<string, string[]>();
+const nimResponseCache = new Map<string, string | null>();
+const MAX_RULE_MATCHES_PER_FILE = 20;
 const MAX_NIM_REMEDIATIONS = 1;
+
+export class ScanValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ScanValidationError";
+  }
+}
 
 function now() {
   return Date.now();
@@ -140,7 +150,6 @@ function createDetectedFinding(
     filePath: file.path,
     line,
     snippet,
-    context: getContextWindow(file.content, line),
     priorityScore: calculatePriorityScore({
       ...payload,
       id: "",
@@ -167,6 +176,10 @@ async function intakeAgent(input: ScanRequestInput) {
   const startedAt = now();
 
   if (input.demoId) {
+    if (!demoRepositories[input.demoId]) {
+      throw new ScanValidationError(`Unknown demo repository: ${input.demoId}`);
+    }
+
     const snapshot = await loadDemoSnapshot(input.demoId);
     return {
       snapshot,
@@ -179,24 +192,28 @@ async function intakeAgent(input: ScanRequestInput) {
     };
   }
 
-  if (!input.repoUrl) {
-    throw new Error("Provide a GitHub repository URL or choose demo mode.");
+  if (!input.repoUrl?.trim()) {
+    throw new ScanValidationError("Provide a GitHub repository URL or choose demo mode.");
   }
 
   const parsed = parseGitHubRepositoryUrl(input.repoUrl);
 
   if (!parsed) {
-    throw new Error("Only public GitHub repository URLs are supported in this MVP.");
+    throw new ScanValidationError("Only public GitHub repository URLs are supported in this MVP.");
   }
 
   const snapshot = await fetchGitHubSnapshot(parsed);
+  const warningSuffix =
+    snapshot.warnings && snapshot.warnings.length > 0
+      ? ` Skipped ${snapshot.warnings.length} files that could not be fetched.`
+      : "";
 
   return {
     snapshot,
     log: makeLog(
       AGENT_SEQUENCE[0],
       startedAt,
-      `Mapped repository structure and selected high-signal files from ${snapshot.target.fullName}.`,
+      `Mapped repository structure and selected high-signal files from ${snapshot.target.fullName}.${warningSuffix}`,
       snapshot.files.length,
     ),
   };
@@ -209,43 +226,54 @@ function scanPatternRules(files: RepositoryFile[]) {
     const rules = [...secretRules, ...authAndConfigRules];
 
     for (const rule of rules) {
-      const match = rule.pattern.exec(file.content);
+      const flags = rule.pattern.flags.includes("g") ? rule.pattern.flags : `${rule.pattern.flags}g`;
+      const pattern = new RegExp(rule.pattern.source, flags);
+      let matchCount = 0;
 
-      if (!match || match.index === undefined) {
-        continue;
+      for (const match of file.content.matchAll(pattern)) {
+        if (match.index === undefined) {
+          continue;
+        }
+
+        const matchedText = match[0];
+        const line = lineNumberFromIndex(file.content, match.index);
+
+        if (
+          rule.id === "secret-env-file" &&
+          (file.path.includes(".example") ||
+            file.path.includes(".sample") ||
+            looksLikePlaceholder(matchedText))
+        ) {
+          continue;
+        }
+
+        if (rule.id === "secret-hardcoded-generic" && looksLikePlaceholder(matchedText)) {
+          continue;
+        }
+
+        if (rule.id === "config-admin-route" && protectedRouteContext(file.content, line)) {
+          continue;
+        }
+
+        findings.push(
+          createDetectedFinding(file, match.index, {
+            ruleId: rule.id,
+            title: rule.title,
+            severity: rule.severity,
+            category: rule.category,
+            confidence: rule.confidence,
+            evidence: rule.evidence,
+            tags: rule.tags,
+            exploitability: rule.exploitability,
+            remediationEffort: rule.remediationEffort,
+          }),
+        );
+
+        matchCount += 1;
+        if (matchCount >= MAX_RULE_MATCHES_PER_FILE) {
+          break;
+        }
       }
-
-      const matchedText = match[0];
-      const line = lineNumberFromIndex(file.content, match.index);
-
-      if (
-        rule.id === "secret-env-file" &&
-        (file.path.includes(".example") || file.path.includes(".sample") || looksLikePlaceholder(matchedText))
-      ) {
-        continue;
-      }
-
-      if (rule.id === "secret-hardcoded-generic" && looksLikePlaceholder(matchedText)) {
-        continue;
-      }
-
-      if (rule.id === "config-admin-route" && protectedRouteContext(file.content, line)) {
-        continue;
-      }
-
-      findings.push(
-        createDetectedFinding(file, match.index, {
-          ruleId: rule.id,
-          title: rule.title,
-          severity: rule.severity,
-          category: rule.category,
-          confidence: rule.confidence,
-          evidence: rule.evidence,
-          tags: rule.tags,
-          exploitability: rule.exploitability,
-          remediationEffort: rule.remediationEffort,
-        }),
-      );
     }
   }
 
@@ -263,7 +291,7 @@ function parseManifestDependencies(file: RepositoryFile) {
   if (file.path.endsWith("package.json")) {
     try {
       const parsed = JSON.parse(file.content) as Record<string, unknown>;
-      const sections = ["dependencies", "devDependencies", "optionalDependencies"] as const;
+      const sections = ["dependencies"] as const;
 
       for (const section of sections) {
         const deps = parsed[section];
@@ -320,8 +348,8 @@ async function fetchLatestDependencyVersion(
 ) {
   const cacheKey = `${ecosystem}:${packageName}`;
 
-  if (dependencyCache.has(cacheKey)) {
-    return dependencyCache.get(cacheKey) ?? null;
+  if (dependencyLatestVersionCache.has(cacheKey)) {
+    return dependencyLatestVersionCache.get(cacheKey) ?? null;
   }
 
   try {
@@ -333,7 +361,7 @@ async function fetchLatestDependencyVersion(
     const response = await fetch(url, { next: { revalidate: 0 } });
 
     if (!response.ok) {
-      dependencyCache.set(cacheKey, null);
+      dependencyLatestVersionCache.set(cacheKey, null);
       return null;
     }
 
@@ -346,10 +374,10 @@ async function fetchLatestDependencyVersion(
         ? (payload as { "dist-tags"?: { latest?: string } })["dist-tags"]?.latest
         : (payload as { info?: { version?: string } }).info?.version;
 
-    dependencyCache.set(cacheKey, latestVersion ?? null);
+    dependencyLatestVersionCache.set(cacheKey, latestVersion ?? null);
     return latestVersion ?? null;
   } catch {
-    dependencyCache.set(cacheKey, null);
+    dependencyLatestVersionCache.set(cacheKey, null);
     return null;
   }
 }
@@ -360,85 +388,209 @@ function findDependencyLine(file: RepositoryFile, packageName: string) {
   return index >= 0 ? index + 1 : 1;
 }
 
-function versionDeltaSeverity(currentSpec: string, latestVersion: string | null): Severity | null {
-  if (!latestVersion) {
-    return null;
+function extractPinnedDependencyVersion(
+  ecosystem: "npm" | "pypi",
+  spec: string,
+) {
+  const normalized = spec.trim();
+
+  if (ecosystem === "npm") {
+    const exactMatch = normalized.match(/^v?(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)$/);
+    return exactMatch?.[1] ?? null;
   }
 
-  const current = semver.coerce(currentSpec);
-  const latest = semver.coerce(latestVersion);
+  const exactMatch = normalized.match(/^==([A-Za-z0-9_.+-]+)$/);
+  return exactMatch?.[1] ?? null;
+}
 
-  if (!current || !latest || !semver.lt(current, latest)) {
-    return null;
+function advisorySeverityFromCount(advisoryCount: number): Severity {
+  if (advisoryCount >= 4) {
+    return "critical";
   }
 
-  if (latest.major - current.major >= 1) {
+  if (advisoryCount >= 2) {
     return "high";
   }
 
-  if (latest.minor - current.minor >= 2 || latest.patch - current.patch >= 5) {
-    return "medium";
+  return "medium";
+}
+
+function advisoryCacheKey(
+  ecosystem: "npm" | "pypi",
+  packageName: string,
+  version: string,
+) {
+  return `${ecosystem}:${packageName}:${version}`;
+}
+
+async function fetchDependencyAdvisoryIds(
+  dependencies: Array<{
+    name: string;
+    spec: string;
+    ecosystem: "npm" | "pypi";
+  }>,
+) {
+  const advisoryMap = new Map<string, string[]>();
+  const pendingQueries: Array<{
+    cacheKey: string;
+    ecosystem: "npm" | "pypi";
+    name: string;
+    version: string;
+  }> = [];
+
+  for (const dependency of dependencies) {
+    const pinnedVersion = extractPinnedDependencyVersion(
+      dependency.ecosystem,
+      dependency.spec,
+    );
+
+    if (!pinnedVersion) {
+      continue;
+    }
+
+    const cacheKey = advisoryCacheKey(
+      dependency.ecosystem,
+      dependency.name,
+      pinnedVersion,
+    );
+
+    if (dependencyAdvisoryCache.has(cacheKey)) {
+      advisoryMap.set(cacheKey, dependencyAdvisoryCache.get(cacheKey) ?? []);
+      continue;
+    }
+
+    pendingQueries.push({
+      cacheKey,
+      ecosystem: dependency.ecosystem,
+      name: dependency.name,
+      version: pinnedVersion,
+    });
   }
 
-  return "low";
+  if (pendingQueries.length === 0) {
+    return advisoryMap;
+  }
+
+  try {
+    const response = await fetch(`${OSV_API_BASE}/querybatch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        queries: pendingQueries.map((entry) => ({
+          package: {
+            name: entry.name,
+            ecosystem: entry.ecosystem === "npm" ? "npm" : "PyPI",
+          },
+          version: entry.version,
+        })),
+      }),
+      next: { revalidate: 0 },
+    });
+
+    if (!response.ok) {
+      pendingQueries.forEach((entry) => {
+        dependencyAdvisoryCache.set(entry.cacheKey, []);
+        advisoryMap.set(entry.cacheKey, []);
+      });
+      return advisoryMap;
+    }
+
+    const payload = (await response.json()) as {
+      results?: Array<{ vulns?: Array<{ id?: string }> }>;
+    };
+
+    pendingQueries.forEach((entry, index) => {
+      const advisoryIds = (payload.results?.[index]?.vulns ?? [])
+        .map((vulnerability) => vulnerability.id)
+        .filter((id): id is string => Boolean(id))
+        .slice(0, 5);
+
+      dependencyAdvisoryCache.set(entry.cacheKey, advisoryIds);
+      advisoryMap.set(entry.cacheKey, advisoryIds);
+    });
+  } catch {
+    pendingQueries.forEach((entry) => {
+      dependencyAdvisoryCache.set(entry.cacheKey, []);
+      advisoryMap.set(entry.cacheKey, []);
+    });
+  }
+
+  return advisoryMap;
 }
 
 async function dependencyFindings(files: RepositoryFile[]) {
   const manifests = files.filter(
     (file) => file.path.endsWith("package.json") || file.path.endsWith("requirements.txt"),
   );
+  const manifestDependencies = manifests
+    .flatMap((file) => parseManifestDependencies(file))
+    .slice(0, 40);
+  const advisoryMap = await fetchDependencyAdvisoryIds(manifestDependencies);
   const findings: DetectedFinding[] = [];
 
   for (const file of manifests) {
     const dependencies = parseManifestDependencies(file);
 
     for (const dependency of dependencies.slice(0, 30)) {
+      const pinnedVersion = extractPinnedDependencyVersion(
+        dependency.ecosystem,
+        dependency.spec,
+      );
+
+      if (!pinnedVersion) {
+        continue;
+      }
+
+      const advisoryIds =
+        advisoryMap.get(
+          advisoryCacheKey(dependency.ecosystem, dependency.name, pinnedVersion),
+        ) ?? [];
+
+      if (advisoryIds.length === 0) {
+        continue;
+      }
+
       const latestVersion = await fetchLatestDependencyVersion(
         dependency.ecosystem,
         dependency.name,
       );
-      const severity = versionDeltaSeverity(dependency.spec, latestVersion);
-      const watchlistEntry = WATCHLIST_PACKAGES[dependency.name];
-
-      if (!severity && !watchlistEntry) {
-        continue;
-      }
-
       const line = findDependencyLine(file, dependency.name);
       const currentLine = getLineSnippet(file.content, line);
-      const riskSeverity = severity ?? "medium";
+      const severity = advisorySeverityFromCount(advisoryIds.length);
+      const watchlistEntry = WATCHLIST_PACKAGES[dependency.name];
+      const latestVersionNote =
+        latestVersion && latestVersion !== pinnedVersion
+          ? ` Latest stable release observed: ${latestVersion}.`
+          : "";
 
       findings.push({
         id: `dependency:${dependency.filePath}:${dependency.name}`,
-        ruleId: "dependency-drift",
-        title: `Dependency drift detected for ${dependency.name}`,
-        severity: riskSeverity,
+        ruleId: "dependency-advisory",
+        title: `Known security advisories affect ${dependency.name} ${pinnedVersion}`,
+        severity,
         category: "Dependencies",
-        confidence: latestVersion ? "high" : "medium",
+        confidence: "high",
         filePath: dependency.filePath,
         line,
         snippet: currentLine,
-        evidence: latestVersion
-          ? `${dependency.name} is pinned at ${dependency.spec}, while the latest published version is ${latestVersion}.`
-          : `${dependency.name} appears on the security-sensitive dependency watchlist and should be reviewed.`,
-        tags: ["dependencies", dependency.ecosystem, dependency.name],
-        exploitability: riskSeverity === "high" ? "medium" : "low",
+        evidence: `${dependency.name} ${pinnedVersion} matches advisory IDs ${advisoryIds.join(", ")}.${latestVersionNote}`,
+        tags: ["dependencies", dependency.ecosystem, dependency.name, ...advisoryIds],
+        exploitability: severity === "critical" || severity === "high" ? "medium" : "low",
         remediationEffort: "moderate",
-        context: getContextWindow(file.content, line),
         technicalDetail: watchlistEntry?.note,
         priorityScore: calculatePriorityScore({
           id: "",
-          ruleId: "dependency-drift",
+          ruleId: "dependency-advisory",
           title: "",
-          severity: riskSeverity,
+          severity,
           category: "Dependencies",
-          confidence: latestVersion ? "high" : "medium",
+          confidence: "high",
           filePath: dependency.filePath,
           line,
           snippet: currentLine,
           evidence: "",
-          tags: [],
-          exploitability: riskSeverity === "high" ? "medium" : "low",
+          tags: advisoryIds,
+          exploitability: severity === "critical" || severity === "high" ? "medium" : "low",
           remediationEffort: "moderate",
         }),
       });
@@ -518,7 +670,7 @@ async function detectionAgent(snapshot: RepositorySnapshot) {
     log: makeLog(
       AGENT_SEQUENCE[1],
       startedAt,
-      "Ran secrets, auth, config, route, and dependency checks with deterministic rules.",
+      "Ran secrets, auth, config, route, and advisory-backed dependency checks with deterministic rules.",
       findings.length,
     ),
   };
@@ -529,9 +681,13 @@ function contextAgent(findings: DetectedFinding[], snapshot: RepositorySnapshot)
   const filesByPath = new Map(snapshot.files.map((file) => [file.path, file]));
 
   const contextualized = findings.map((finding) => {
+    if (finding.context) {
+      return finding;
+    }
+
     const file = filesByPath.get(finding.filePath);
 
-    if (!file || finding.context) {
+    if (!file) {
       return finding;
     }
 
@@ -541,12 +697,14 @@ function contextAgent(findings: DetectedFinding[], snapshot: RepositorySnapshot)
     };
   });
 
+  const hydratedCount = contextualized.filter((finding) => Boolean(finding.context)).length;
+
   return {
     findings: contextualized,
     log: makeLog(
       AGENT_SEQUENCE[2],
       startedAt,
-      "Pulled surrounding code and config context to ground each finding and reduce false positives.",
+      `Hydrated contextual code windows for ${hydratedCount} findings and preserved synthesized context where direct code windows were not applicable.`,
       contextualized.length,
     ),
   };
@@ -582,11 +740,21 @@ function extractJsonArray<T>(content: string): T | null {
   }
 }
 
-async function callNim(messages: Array<{ role: "system" | "user"; content: string }>) {
+async function callNim(
+  messages: Array<{ role: "system" | "user"; content: string }>,
+  options?: { timeoutMs?: number },
+) {
   const apiKey = process.env.NVIDIA_NIM_API_KEY;
 
   if (!apiKey) {
     return null;
+  }
+
+  const model = process.env.NVIDIA_NIM_MODEL || DEFAULT_NIM_MODEL;
+  const cacheKey = JSON.stringify({ model, messages });
+
+  if (nimResponseCache.has(cacheKey)) {
+    return nimResponseCache.get(cacheKey) ?? null;
   }
 
   const response = await fetch(NVIDIA_NIM_BASE_URL, {
@@ -596,12 +764,12 @@ async function callNim(messages: Array<{ role: "system" | "user"; content: strin
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: process.env.NVIDIA_NIM_MODEL || DEFAULT_NIM_MODEL,
+      model,
       temperature: 0.1,
       max_tokens: 450,
       messages,
     }),
-    signal: AbortSignal.timeout(12000),
+    signal: AbortSignal.timeout(options?.timeoutMs ?? 7000),
   });
 
   if (!response.ok) {
@@ -612,7 +780,9 @@ async function callNim(messages: Array<{ role: "system" | "user"; content: strin
     choices?: Array<{ message?: { content?: string } }>;
   };
 
-  return payload.choices?.[0]?.message?.content ?? null;
+  const content = payload.choices?.[0]?.message?.content ?? null;
+  nimResponseCache.set(cacheKey, content);
+  return content;
 }
 
 function fallbackRemediation(finding: DetectedFinding): Finding {
@@ -671,6 +841,7 @@ Do not exaggerate risk.
 Do not invent evidence.
 Explain issues in plain language first, then technical detail.
 Prefer actionable remediation over generic advice.
+Do not rename, reclassify, or otherwise override the grounded finding metadata.
 Return only valid JSON with this exact shape:
 {
   "title": string,
@@ -747,15 +918,14 @@ async function remediationAgent(findings: DetectedFinding[]) {
         continue;
       }
 
+      const fallback = fallbackRemediation(finding);
+
       remediated.push({
-        ...finding,
-        title: nimResponse.title || finding.title,
-        severity: nimResponse.severity || finding.severity,
-        category: nimResponse.category || finding.category,
-        confidence: nimResponse.confidence || finding.confidence,
-        issueSummary: nimResponse.issue_summary,
-        developerExplanation: nimResponse.developer_explanation,
-        recommendedFix: nimResponse.recommended_fix,
+        ...fallback,
+        issueSummary: nimResponse.issue_summary || fallback.issueSummary,
+        developerExplanation:
+          nimResponse.developer_explanation || fallback.developerExplanation,
+        recommendedFix: nimResponse.recommended_fix || fallback.recommendedFix,
         aiProvider: "nvidia-nim",
       });
     } catch {
@@ -809,11 +979,11 @@ function buildDeterministicTopActions(findings: Finding[]): TopAction[] {
   const dependencies = findings.filter((finding) => finding.category === "Dependencies");
   if (dependencies.length > 0) {
     actions.push({
-      title: "Upgrade stale dependencies on the request path",
+      title: "Patch dependencies with known security advisories",
       rationale:
-        "Dependency drift compounds quietly and can leave known issues unresolved even when application code looks clean.",
+        "Dependency vulnerabilities can be exploitable without any new application bug, so packages with known advisories should be upgraded first.",
       severity: dependencies[0].severity,
-      impactedArea: "Supply chain",
+      impactedArea: "Dependency security",
     });
   }
 
@@ -940,10 +1110,7 @@ async function prioritizationAgent(findings: Finding[]) {
 }
 
 export async function runRepoGuardianScan(input: ScanRequestInput): Promise<ScanResult> {
-  const normalizedInput =
-    !input.repoUrl && !input.demoId ? { ...input, demoId: DEMO_REPOSITORY_ID } : input;
-
-  const { snapshot, log: intakeLog } = await intakeAgent(normalizedInput);
+  const { snapshot, log: intakeLog } = await intakeAgent(input);
   const { findings: detected, log: detectionLog } = await detectionAgent(snapshot);
   const { findings: contextualized, log: contextLog } = contextAgent(detected, snapshot);
   const { findings: remediated, log: remediationLog } = await remediationAgent(contextualized);

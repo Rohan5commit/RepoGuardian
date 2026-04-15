@@ -1,4 +1,5 @@
 import {
+  DEFAULT_SCOPE_IGNORE_SEGMENTS,
   GITHUB_API_BASE,
   SCAN_IGNORE_SEGMENTS,
   TEXT_EXTENSIONS,
@@ -63,10 +64,15 @@ async function fetchGitHubJson<T>(url: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-function isInterestingTextPath(filePath: string) {
+function isInterestingTextPath(filePath: string, pathPrefix?: string) {
   const normalized = filePath.toLowerCase();
+  const segments = normalized.split("/");
 
-  if (SCAN_IGNORE_SEGMENTS.some((segment) => normalized.split("/").includes(segment))) {
+  if (SCAN_IGNORE_SEGMENTS.some((segment) => segments.includes(segment))) {
+    return false;
+  }
+
+  if (!pathPrefix && DEFAULT_SCOPE_IGNORE_SEGMENTS.some((segment) => segments.includes(segment))) {
     return false;
   }
 
@@ -183,14 +189,14 @@ export async function fetchGitHubSnapshot(
       return false;
     }
 
-    return isInterestingTextPath(entry.path);
+    return isInterestingTextPath(entry.path, parsed.pathPrefix);
   });
 
   const selectedFiles = scopedTree
     .sort((left, right) => scorePath(right.path) - scorePath(left.path))
     .slice(0, 45);
 
-  const fileContents = await Promise.all(
+  const settledFiles = await Promise.allSettled(
     selectedFiles.map(async (file): Promise<RepositoryFile> => {
       const payload = await fetchGitHubJson<GitHubContentResponse>(
         `${GITHUB_API_BASE}/repos/${parsed.owner}/${parsed.repo}/contents/${encodeGitHubPath(file.path)}?ref=${encodeURIComponent(ref)}`,
@@ -198,9 +204,13 @@ export async function fetchGitHubSnapshot(
 
       const content =
         payload.download_url && !payload.content
-          ? await fetch(payload.download_url, { next: { revalidate: 0 } }).then((response) =>
-              response.text(),
-            )
+          ? await fetch(payload.download_url, { next: { revalidate: 0 } }).then(async (response) => {
+              if (!response.ok) {
+                throw new Error(`Download failed with ${response.status} ${response.statusText}`);
+              }
+
+              return response.text();
+            })
           : decodeContentFile(payload);
 
       return {
@@ -210,6 +220,21 @@ export async function fetchGitHubSnapshot(
       };
     }),
   );
+
+  const warnings: string[] = [];
+  const fileContents: RepositoryFile[] = [];
+
+  settledFiles.forEach((result, index) => {
+    const path = selectedFiles[index]?.path ?? "unknown-file";
+
+    if (result.status === "fulfilled") {
+      fileContents.push(result.value);
+      return;
+    }
+
+    const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
+    warnings.push(`Skipped ${path}: ${reason}`);
+  });
 
   const target: RepositoryTarget = {
     sourceMode: "live",
@@ -236,6 +261,7 @@ export async function fetchGitHubSnapshot(
       }),
     ),
     files: fileContents,
+    warnings,
     scannedAt: new Date().toISOString(),
   };
 }

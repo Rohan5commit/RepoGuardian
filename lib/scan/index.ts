@@ -1,1 +1,1 @@
-export { runRepoGuardianScan } from "@/lib/scan/agents";
+export { ScanValidationError, runRepoGuardianScan } from "@/lib/scan/agents";

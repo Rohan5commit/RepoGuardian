@@ -8,6 +8,7 @@ export const DEMO_REPOSITORY_PATH = "demo/sample-repo";
 export const DEMO_REPOSITORY_GITHUB_URL =
   "https://github.com/Rohan5commit/RepoGuardian/tree/main/demo/sample-repo";
 export const GITHUB_API_BASE = "https://api.github.com";
+export const OSV_API_BASE = "https://api.osv.dev/v1";
 export const NVIDIA_NIM_BASE_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
 export const DEFAULT_NIM_MODEL = "nvidia/nvidia-nemotron-nano-9b-v2";
 export const THEME_COOKIE_NAME = "repoguardian-theme";
@@ -80,6 +81,19 @@ export const SCAN_IGNORE_SEGMENTS = [
   "vendor",
   "__pycache__",
   ".git",
+];
+
+export const DEFAULT_SCOPE_IGNORE_SEGMENTS = [
+  "__mocks__",
+  "__tests__",
+  "example",
+  "examples",
+  "fixture",
+  "fixtures",
+  "spec",
+  "specs",
+  "test",
+  "tests",
 ];
 
 export const WATCHLIST_PACKAGES: Record<
