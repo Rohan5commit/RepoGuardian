@@ -43,6 +43,7 @@ const effortWeight = { fast: 2, moderate: 4, deep: 7 } as const;
 const confidenceWeight = { high: 10, medium: 6, low: 3 } as const;
 
 const dependencyCache = new Map<string, string | null>();
+const MAX_NIM_REMEDIATIONS = 4;
 
 function now() {
   return Date.now();
@@ -729,8 +730,10 @@ async function remediationAgent(findings: DetectedFinding[]) {
   const aiEnabled = Boolean(process.env.NVIDIA_NIM_API_KEY);
   const remediated: Finding[] = [];
 
-  for (const finding of findings) {
-    if (!aiEnabled) {
+  for (const [index, finding] of findings.entries()) {
+    const shouldUseNim = aiEnabled && index < MAX_NIM_REMEDIATIONS;
+
+    if (!shouldUseNim) {
       remediated.push(fallbackRemediation(finding));
       continue;
     }
@@ -768,7 +771,7 @@ async function remediationAgent(findings: DetectedFinding[]) {
       startedAt,
       aiEnabled
         ? usedFallback
-          ? "Used NVIDIA NIM where available and fell back to deterministic remediation when responses were unavailable."
+          ? `Used NVIDIA NIM on the top ${MAX_NIM_REMEDIATIONS} highest-priority findings and deterministic remediation on the remainder to keep scan latency demo-safe.`
           : "Generated explanations and fixes with NVIDIA NIM structured remediation prompts."
         : "NVIDIA NIM key not configured, so deterministic remediation guidance was used.",
       remediated.length,
