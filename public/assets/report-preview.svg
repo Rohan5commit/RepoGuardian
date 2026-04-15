@@ -1,0 +1,33 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1600" height="900" rx="36" fill="#F4F6F2"/>
+  <rect x="136" y="56" width="1328" height="788" rx="34" fill="#FFFFFF" stroke="#D5DDD8"/>
+  <text x="192" y="128" fill="#10201D" font-family="Arial, sans-serif" font-size="44" font-weight="700">RepoGuardian Scan Report</text>
+  <text x="192" y="168" fill="#5B6E69" font-family="Arial, sans-serif" font-size="19">Repository: demo/sample-repo</text>
+  <text x="192" y="198" fill="#5B6E69" font-family="Arial, sans-serif" font-size="19">Generated: 2026-04-15T00:00:00.000Z</text>
+  <rect x="192" y="236" width="1216" height="108" rx="24" fill="#EDF2EE"/>
+  <text x="228" y="278" fill="#5B6E69" font-family="Arial, sans-serif" font-size="14" letter-spacing="3">EXECUTIVE SUMMARY</text>
+  <text x="228" y="315" fill="#10201D" font-family="Arial, sans-serif" font-size="26" font-weight="700">Security score: 62/100</text>
+  <text x="620" y="315" fill="#10201D" font-family="Arial, sans-serif" font-size="26" font-weight="700">Total findings: 11</text>
+  <rect x="192" y="372" width="588" height="408" rx="28" fill="#FFFFFF" stroke="#D5DDD8"/>
+  <text x="228" y="414" fill="#5B6E69" font-family="Arial, sans-serif" font-size="14" letter-spacing="3">TOP 3 ACTIONS</text>
+  <rect x="228" y="442" width="516" height="80" rx="22" fill="#F9E0DC"/>
+  <text x="254" y="478" fill="#B23F36" font-family="Arial, sans-serif" font-size="22" font-weight="700">1. Rotate exposed secrets and purge them from history</text>
+  <text x="254" y="505" fill="#6B433A" font-family="Arial, sans-serif" font-size="15">Credential exposure is the fastest path to compromise.</text>
+  <rect x="228" y="538" width="516" height="80" rx="22" fill="#FDE7DB"/>
+  <text x="254" y="574" fill="#CF622E" font-family="Arial, sans-serif" font-size="22" font-weight="700">2. Harden JWT and browser token handling</text>
+  <text x="254" y="601" fill="#7B553B" font-family="Arial, sans-serif" font-size="15">Current auth flow trusts browser-accessible storage too much.</text>
+  <rect x="228" y="634" width="516" height="80" rx="22" fill="#D9EFE7"/>
+  <text x="254" y="670" fill="#1D6B58" font-family="Arial, sans-serif" font-size="22" font-weight="700">3. Upgrade stale dependencies on the request path</text>
+  <text x="254" y="697" fill="#355650" font-family="Arial, sans-serif" font-size="15">Dependency drift compounds quietly in fast-moving repos.</text>
+  <rect x="820" y="372" width="588" height="408" rx="28" fill="#FFFFFF" stroke="#D5DDD8"/>
+  <text x="856" y="414" fill="#5B6E69" font-family="Arial, sans-serif" font-size="14" letter-spacing="3">FINDINGS</text>
+  <text x="856" y="455" fill="#10201D" font-family="Arial, sans-serif" font-size="24" font-weight="700">1. Environment file with likely live secrets is committed</text>
+  <text x="856" y="489" fill="#5B6E69" font-family="Arial, sans-serif" font-size="17">Severity: CRITICAL · Category: Secrets · Confidence: high</text>
+  <text x="856" y="528" fill="#10201D" font-family="Arial, sans-serif" font-size="18" font-weight="700">Evidence</text>
+  <text x="856" y="556" fill="#5B6E69" font-family="Arial, sans-serif" font-size="16">A committed environment file contains non-placeholder values.</text>
+  <text x="856" y="604" fill="#10201D" font-family="Arial, sans-serif" font-size="18" font-weight="700">Fix</text>
+  <text x="856" y="632" fill="#5B6E69" font-family="Arial, sans-serif" font-size="16">Move the secret into managed environment variables, rotate it,</text>
+  <text x="856" y="656" fill="#5B6E69" font-family="Arial, sans-serif" font-size="16">purge it from git history, and add a pre-commit scanner.</text>
+  <rect x="856" y="694" width="516" height="56" rx="18" fill="#0E1715"/>
+  <text x="884" y="729" fill="#CDE8DF" font-family="Courier New, monospace" font-size="16">1: JWT_SECRET=super-secret-production-signing-key</text>
+</svg>

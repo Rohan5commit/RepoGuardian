@@ -1,0 +1,46 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1600" height="900" rx="36" fill="#F4F6F2"/>
+  <rect x="72" y="72" width="1456" height="756" rx="34" fill="#FFFFFF" stroke="#D5DDD8"/>
+  <text x="120" y="142" fill="#10201D" font-family="Arial, sans-serif" font-size="44" font-weight="700">RepoGuardian Architecture</text>
+  <text x="120" y="180" fill="#5B6E69" font-family="Arial, sans-serif" font-size="20">GitHub intake, deterministic detection, NVIDIA NIM reasoning, and report-ready output.</text>
+  <rect x="120" y="248" width="236" height="96" rx="24" fill="#EDF2EE"/>
+  <text x="165" y="304" fill="#10201D" font-family="Arial, sans-serif" font-size="28" font-weight="700">Dashboard</text>
+  <rect x="424" y="248" width="236" height="96" rx="24" fill="#EDF2EE"/>
+  <text x="470" y="304" fill="#10201D" font-family="Arial, sans-serif" font-size="28" font-weight="700">/api/scan</text>
+  <rect x="728" y="228" width="256" height="132" rx="28" fill="#D9EFE7"/>
+  <text x="774" y="280" fill="#10201D" font-family="Arial, sans-serif" font-size="28" font-weight="700">Intake Agent</text>
+  <text x="774" y="313" fill="#355650" font-family="Arial, sans-serif" font-size="16">GitHub URL parsing, demo loading, file selection</text>
+  <rect x="1048" y="228" width="256" height="132" rx="28" fill="#EDF2EE"/>
+  <text x="1082" y="280" fill="#10201D" font-family="Arial, sans-serif" font-size="28" font-weight="700">Detection Agent</text>
+  <text x="1082" y="313" fill="#5B6E69" font-family="Arial, sans-serif" font-size="16">Secrets, auth, config, routes, dependencies</text>
+  <rect x="1368" y="228" width="112" height="132" rx="28" fill="#EDF2EE"/>
+  <text x="1392" y="286" fill="#10201D" font-family="Arial, sans-serif" font-size="22" font-weight="700">Ctx</text>
+  <text x="1388" y="314" fill="#5B6E69" font-family="Arial, sans-serif" font-size="15">Context</text>
+  <rect x="728" y="468" width="256" height="132" rx="28" fill="#EDF2EE"/>
+  <text x="752" y="520" fill="#10201D" font-family="Arial, sans-serif" font-size="28" font-weight="700">Remediation Agent</text>
+  <text x="752" y="553" fill="#5B6E69" font-family="Arial, sans-serif" font-size="16">Structured JSON explanations and fixes</text>
+  <rect x="1048" y="468" width="256" height="132" rx="28" fill="#EDF2EE"/>
+  <text x="1070" y="520" fill="#10201D" font-family="Arial, sans-serif" font-size="28" font-weight="700">Prioritization Agent</text>
+  <text x="1070" y="553" fill="#5B6E69" font-family="Arial, sans-serif" font-size="16">Top actions, score, and severity ranking</text>
+  <rect x="1368" y="468" width="112" height="132" rx="28" fill="#D9EFE7"/>
+  <text x="1388" y="523" fill="#10201D" font-family="Arial, sans-serif" font-size="21" font-weight="700">NIM</text>
+  <text x="1379" y="551" fill="#355650" font-family="Arial, sans-serif" font-size="15">Reasoning</text>
+  <rect x="120" y="468" width="236" height="132" rx="24" fill="#FFFFFF" stroke="#D5DDD8"/>
+  <text x="154" y="520" fill="#10201D" font-family="Arial, sans-serif" font-size="28" font-weight="700">GitHub API</text>
+  <text x="154" y="553" fill="#5B6E69" font-family="Arial, sans-serif" font-size="16">Public repos and metadata</text>
+  <rect x="424" y="468" width="236" height="132" rx="24" fill="#FFFFFF" stroke="#D5DDD8"/>
+  <text x="466" y="520" fill="#10201D" font-family="Arial, sans-serif" font-size="28" font-weight="700">Demo Corpus</text>
+  <text x="466" y="553" fill="#5B6E69" font-family="Arial, sans-serif" font-size="16">Stable vulnerable sample repo</text>
+  <rect x="728" y="688" width="576" height="96" rx="24" fill="#0E1715"/>
+  <text x="782" y="743" fill="#CDE8DF" font-family="Arial, sans-serif" font-size="30" font-weight="700">Dashboard output + markdown report export</text>
+  <path d="M356 296H424" stroke="#1D6B58" stroke-width="6" stroke-linecap="round"/>
+  <path d="M660 296H728" stroke="#1D6B58" stroke-width="6" stroke-linecap="round"/>
+  <path d="M984 296H1048" stroke="#1D6B58" stroke-width="6" stroke-linecap="round"/>
+  <path d="M1304 296H1368" stroke="#1D6B58" stroke-width="6" stroke-linecap="round"/>
+  <path d="M856 360V468" stroke="#1D6B58" stroke-width="6" stroke-linecap="round"/>
+  <path d="M1176 360V468" stroke="#1D6B58" stroke-width="6" stroke-linecap="round"/>
+  <path d="M1368 534H1304" stroke="#1D6B58" stroke-width="6" stroke-linecap="round"/>
+  <path d="M356 534H424" stroke="#1D6B58" stroke-width="6" stroke-linecap="round"/>
+  <path d="M660 534H728" stroke="#1D6B58" stroke-width="6" stroke-linecap="round"/>
+  <path d="M1016 600V688" stroke="#1D6B58" stroke-width="6" stroke-linecap="round"/>
+</svg>
