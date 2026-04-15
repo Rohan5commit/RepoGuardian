@@ -599,13 +599,22 @@ async function dependencyFindings(files: RepositoryFile[]) {
 }
 
 function missingHeaderFinding(snapshot: RepositorySnapshot) {
-  const webRelevantFiles = snapshot.files.filter((file) =>
-    /(next\.config|server|middleware|app\.py|express|flask|vercel\.json|nginx|netlify\.toml)/i.test(
-      file.path,
-    ),
-  );
+  const webRelevantFiles = snapshot.files.filter((file) => {
+    const basename = file.path.split("/").pop()?.toLowerCase() ?? file.path.toLowerCase();
+
+    return /^(next\.config\.(js|ts|mjs|cjs)|middleware\.(ts|js)|server\.(ts|js|py)|app\.(py|ts|js)|vercel\.json|nginx\.conf|netlify\.toml)$/.test(
+      basename,
+    );
+  });
 
   if (webRelevantFiles.length === 0) {
+    return null;
+  }
+
+  const hasRootLevelEntryPoint = webRelevantFiles.some((file) => !file.path.includes("/"));
+  const topLevelSegments = new Set(webRelevantFiles.map((file) => file.path.split("/")[0]));
+
+  if (!snapshot.target.pathPrefix && !hasRootLevelEntryPoint && topLevelSegments.size > 1) {
     return null;
   }
 
